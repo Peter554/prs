@@ -8,6 +8,9 @@ from typing import Any, Literal
 import pydantic
 
 
+class GitHubError(Exception): ...
+
+
 class PullRequest(pydantic.BaseModel):
     model_config = pydantic.ConfigDict(frozen=True)
 
@@ -62,7 +65,8 @@ async def get_pull_requests(query: str) -> list[PullRequest]:
 
     stdout, stderr = await process.communicate()
 
-    assert stderr == b""
+    if stderr != b"":
+        raise GitHubError(stderr.decode())
 
     return [
         PullRequest.from_api_response(response)
