@@ -1,5 +1,6 @@
 import asyncio
 import datetime
+import pathlib
 from typing import Annotated
 
 import humanize
@@ -8,7 +9,7 @@ from rich.console import Console
 from rich.markup import escape
 from rich.table import Table
 
-from . import github
+from . import config, github
 
 cli = typer.Typer()
 console = Console()
@@ -22,27 +23,47 @@ def main(
 
 
 async def amain(mode: str, n: int) -> None:
+    app_dir = typer.get_app_dir("prs")
+    config_path = pathlib.Path(app_dir) / "config.json"
+    if not config_path.is_file():
+        print(f"Please create a config file at {config_path}")
+        return
+
+    with open(config_path) as f:
+        config_ = config.Config.model_validate_json(f.read())
+
     async with asyncio.TaskGroup() as tg_:
         tg = PullRequestsTaskGroup(tg_)
         if mode in ("mine", "m"):
             title = "My PRs"
-            tg.include("author:peter554")
-            tg.include("assignee:peter554")
+            tg.include(f"author:{config_.username}")
+            tg.include(f"assignee:{config_.username}")
         elif mode in ("review-requests", "rr"):
             title = "PRs where my review is requested"
-            tg.include("user-review-requested:peter554")
+            tg.include(f"user-review-requested:{config_.username}")
         elif mode in ("reviewed", "r"):
             title = "PRs I have reviewed (updated in last 2 weeks)"
             two_weeks_ago = datetime.datetime.now(datetime.UTC) - datetime.timedelta(
                 weeks=2
             )
-            tg.include(f"reviewed-by:peter554 updated:>{two_weeks_ago.date()}")
-            tg.exclude("author:peter554")
-            tg.exclude("assignee:peter554")
+            tg.include(
+                f"reviewed-by:{config_.username} updated:>{two_weeks_ago.date()}"
+            )
+            tg.exclude(f"author:{config_.username}")
+            tg.exclude(f"assignee:{config_.username}")
+        elif mode.startswith("team:") or mode.startswith("t:"):
+            team = mode.removeprefix("team:")
+            team = team.removeprefix("t:")
+            if team in config_.team_aliases:
+                team = config_.team_aliases[team]
+            title = f"PRs where review is requested  (team {team})"
+            tg.include(f"team-review-requested:{team}")
+            tg.exclude(f"author:{config_.username}")
+            tg.exclude(f"assignee:{config_.username}")
         else:
             ValueError(f'mode "{mode}" not supported')
 
-    _render_prs(title, tg.result()[:n])
+    render_prs(title, tg.result()[:n])
 
 
 class PullRequestsTaskGroup:
@@ -66,7 +87,7 @@ class PullRequestsTaskGroup:
         return list(sorted(prs, key=lambda pr: pr.updated_at, reverse=True))
 
 
-def _render_prs(title: str, prs: list[github.PullRequest]) -> None:
+def render_prs(title: str, prs: list[github.PullRequest]) -> None:
     table = Table(title=title, expand=True)
 
     table.add_column("PR")
