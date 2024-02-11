@@ -64,12 +64,17 @@ class PullRequest(pydantic.BaseModel):
 
 
 async def get_pull_requests(query: str) -> list[PullRequest]:
-    async with asyncio.TaskGroup() as tg:
-        base_task = tg.create_task(_get_pull_requests(query))
-        pending_task = tg.create_task(_get_pull_requests(query + " status:pending"))
-        success_task = tg.create_task(_get_pull_requests(query + " status:success"))
-        failure_task = tg.create_task(_get_pull_requests(query + " status:failure"))
-        approved_task = tg.create_task(_get_pull_requests(query + " review:approved"))
+    try:
+        async with asyncio.TaskGroup() as tg:
+            base_task = tg.create_task(_get_pull_requests(query))
+            pending_task = tg.create_task(_get_pull_requests(query + " status:pending"))
+            success_task = tg.create_task(_get_pull_requests(query + " status:success"))
+            failure_task = tg.create_task(_get_pull_requests(query + " status:failure"))
+            approved_task = tg.create_task(
+                _get_pull_requests(query + " review:approved")
+            )
+    except* GitHubError as e:
+        raise e.exceptions[0]
 
     pending = set(pr["html_url"] for pr in pending_task.result())
     success = set(pr["html_url"] for pr in success_task.result())

@@ -1,8 +1,15 @@
 # prs
 
-CLI to list GitHub PRs
+CLI to list GitHub PRs.
 
-* Install and set up the GitHub CLI
+Pre-requisites:
+
+* Install and set up the [GitHub CLI](https://cli.github.com/)
+* Install [pipx](https://pipx.pypa.io/stable/)
+* Python 3.11 installed (e.g. with [pyenv](https://github.com/pyenv/pyenv)) 
+
+Install:
+
 * Clone the repo
 * `pipx install ./path/to/repo`
 
@@ -11,10 +18,14 @@ CLI to list GitHub PRs
 prs mine
 prs m
 
-# PRs I am requested to review
+# PRs I am requested to review (excluding teams)
 prs review-requests
 prs rr
 prs
+
+# PRs I am requested to review (including teams)
+prs review-requests-teams
+prs rrt
 
 # PRs I have reviewed (updated in the last 2 weeks)
 prs reviewed
