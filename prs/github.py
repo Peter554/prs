@@ -22,6 +22,10 @@ class PullRequest(pydantic.BaseModel):
     is_draft: bool
     created_at: datetime.datetime
     updated_at: datetime.datetime
+    closed_at: datetime.datetime | None
+    merged_at: datetime.datetime | None
+    commit_status: Literal["pending", "success", "failure", "unknown"]
+    approved: bool
 
     def __hash__(self) -> int:
         return hash(self.url)
@@ -37,7 +41,12 @@ class PullRequest(pydantic.BaseModel):
         return self.url.split("/")[-3]
 
     @classmethod
-    def from_api_response(cls, response: dict[str, Any]) -> PullRequest:
+    def from_search_api_response(
+        cls,
+        response: dict[str, Any],
+        commit_status: Literal["pending", "success", "failure", "unknown"],
+        approved: bool,
+    ) -> PullRequest:
         return cls(
             author=response["user"]["login"],
             number=response["number"],
@@ -47,19 +56,54 @@ class PullRequest(pydantic.BaseModel):
             is_draft=response["draft"],
             created_at=response["created_at"],
             updated_at=response["updated_at"],
+            closed_at=response["closed_at"],
+            merged_at=response["pull_request"]["merged_at"],
+            commit_status=commit_status,
+            approved=approved,
         )
 
 
 async def get_pull_requests(query: str) -> list[PullRequest]:
+    async with asyncio.TaskGroup() as tg:
+        base_task = tg.create_task(_get_pull_requests(query))
+        pending_task = tg.create_task(_get_pull_requests(query + " status:pending"))
+        success_task = tg.create_task(_get_pull_requests(query + " status:success"))
+        failure_task = tg.create_task(_get_pull_requests(query + " status:failure"))
+        approved_task = tg.create_task(_get_pull_requests(query + " review:approved"))
+
+    pending = set(pr["html_url"] for pr in pending_task.result())
+    success = set(pr["html_url"] for pr in success_task.result())
+    failure = set(pr["html_url"] for pr in failure_task.result())
+    approved = set(pr["html_url"] for pr in approved_task.result())
+
+    return [
+        PullRequest.from_search_api_response(
+            pr,
+            (
+                "success"
+                if pr["html_url"] in success
+                else (
+                    "failure"
+                    if pr["html_url"] in failure
+                    else "pending" if pr["html_url"] in pending else "unknown"
+                )
+            ),
+            pr["html_url"] in approved,
+        )
+        for pr in base_task.result()
+    ]
+
+
+async def _get_pull_requests(query: str) -> Any:
     process = await asyncio.create_subprocess_exec(
         *[
             "gh",
             "api",
             "-X",
             "GET",
-            "/search/issues",
+            "/search/issues?per_page=50",
             "-f",
-            f"q=is:pr archived:false sort:updated-desc is:open {query}",
+            f"q=is:pr archived:false sort:created-desc is:open {query}",
         ],
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
@@ -70,7 +114,4 @@ async def get_pull_requests(query: str) -> list[PullRequest]:
     if stderr != b"":
         raise GitHubError(stderr.decode())
 
-    return [
-        PullRequest.from_api_response(response)
-        for response in json.loads(stdout.strip())["items"]
-    ]
+    return json.loads(stdout.strip())["items"]

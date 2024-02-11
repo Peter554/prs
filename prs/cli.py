@@ -47,19 +47,19 @@ async def amain(mode: str, n: int) -> None:
                 weeks=2
             )
             tg.include(
-                f"reviewed-by:{config_.username} updated:>{two_weeks_ago.date()}"
+                f"reviewed-by:{config_.username} updated:>{two_weeks_ago.date()} "
+                f"-author:{config_.username} -assignee:{config_.username}"
             )
-            tg.exclude(f"author:{config_.username}")
-            tg.exclude(f"assignee:{config_.username}")
         elif mode.startswith("team:") or mode.startswith("t:"):
             team = mode.removeprefix("team:")
             team = team.removeprefix("t:")
             if team in config_.team_aliases:
                 team = config_.team_aliases[team]
             title = f"PRs where review is requested  (team {team})"
-            tg.include(f"team-review-requested:{team}")
-            tg.exclude(f"author:{config_.username}")
-            tg.exclude(f"assignee:{config_.username}")
+            tg.include(
+                f"team-review-requested:{team} "
+                f"-author:{config_.username} -assignee:{config_.username}"
+            )
         else:
             ValueError(f'mode "{mode}" not supported')
 
@@ -70,21 +70,15 @@ class PullRequestsTaskGroup:
     def __init__(self, tg: asyncio.TaskGroup) -> None:
         self._tg = tg
         self._include: list[asyncio.Task[list[github.PullRequest]]] = []
-        self._exclude: list[asyncio.Task[list[github.PullRequest]]] = []
 
     def include(self, query: str) -> None:
         self._include.append(self._tg.create_task(github.get_pull_requests(query)))
-
-    def exclude(self, query: str) -> None:
-        self._exclude.append(self._tg.create_task(github.get_pull_requests(query)))
 
     def result(self) -> list[github.PullRequest]:
         prs: set[github.PullRequest] = set()
         for include in self._include:
             prs |= set(include.result())
-        for exclude in self._exclude:
-            prs -= set(exclude.result())
-        return list(sorted(prs, key=lambda pr: pr.updated_at, reverse=True))
+        return list(sorted(prs, key=lambda pr: pr.created_at, reverse=True))
 
 
 def render_prs(title: str, prs: list[github.PullRequest]) -> None:
@@ -93,8 +87,9 @@ def render_prs(title: str, prs: list[github.PullRequest]) -> None:
     table.add_column("PR")
     table.add_column("Title", max_width=64, no_wrap=True)
     table.add_column("Author")
-    table.add_column("Updated")
     table.add_column("Created")
+    table.add_column("Updated")
+    table.add_column("Status")
 
     for pr in prs:
         if pr.is_draft:
@@ -105,8 +100,15 @@ def render_prs(title: str, prs: list[github.PullRequest]) -> None:
             f"[link={pr.url}][{color}]{pr.repo}/{pr.number}[/][/]",
             f"[link={pr.url}]{escape(pr.title)}[/]",
             pr.author,
-            humanize.naturaltime(pr.updated_at),
             humanize.naturaltime(pr.created_at),
+            humanize.naturaltime(pr.updated_at),
+            {
+                "success": "🟢",
+                "failure": "🔴",
+                "pending": "🟡",
+                "unknown": "⚪",
+            }[pr.commit_status]
+            + ("🚢" if pr.approved else ""),
         )
 
     console.print(table)
