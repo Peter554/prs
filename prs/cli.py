@@ -1,12 +1,12 @@
 import asyncio
 import datetime
-import pathlib
 from typing import Annotated
 
 import humanize
 import typer
 from rich.console import Console
 from rich.markup import escape
+from rich.pretty import pprint
 from rich.table import Table
 
 from . import config, github
@@ -23,14 +23,26 @@ def main(
 
 
 async def amain(mode: str, n: int) -> None:
-    app_dir = typer.get_app_dir("prs")
-    config_path = pathlib.Path(app_dir) / "config.json"
-    if not config_path.is_file():
-        print(f"Please create a config file at {config_path}")
+    try:
+        config_ = config.read_config()
+    except config.ConfigNotFound:
+        print(f"No config file found ({config.config_path()}), creating one now...")
+        username = typer.prompt("Username")
+        config_ = config.Config(username=username)
+        config.write_config(config_)
+        return await amain(mode, n)
+
+    if mode == "view-config":
+        print(str(config.config_path()))
+        pprint(config_.model_dump())
         return
 
-    with open(config_path) as f:
-        config_ = config.Config.model_validate_json(f.read())
+    if mode == "add-team-alias":
+        alias = typer.prompt("Alias")
+        team = typer.prompt("Team")
+        config_.team_aliases[alias] = team
+        config.write_config(config_)
+        return
 
     async with asyncio.TaskGroup() as tg_:
         tg = PullRequestsTaskGroup(tg_)

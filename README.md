@@ -2,9 +2,9 @@
 
 CLI to list GitHub PRs
 
+* Install and set up the GitHub CLI
 * Clone the repo
 * `pipx install ./path/to/repo`
-* Create the config file (e.g. username, team aliases)
 
 ```bash
 # PRs I have created or am assigned to
@@ -24,4 +24,7 @@ prs r
 prs team:<team>
 prs t:<team>
 prs t:<team_alias>
+
+# Add a team alias
+prs add-team-alias
 ```
