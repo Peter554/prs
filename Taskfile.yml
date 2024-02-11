@@ -1,0 +1,36 @@
+version: '3'
+
+output: prefixed
+
+tasks:
+  install-pre-commit:
+    cmds:
+      - echo task pre-commit > .git/hooks/pre-commit
+      - chmod +x .git/hooks/pre-commit
+
+  pre-commit:
+    cmds:
+      - echo Stashing unstaged changes... && git diff > /tmp/diff && git apply --allow-empty --reverse /tmp/diff
+      - defer: echo Restoring unstaged changes... && git apply --allow-empty /tmp/diff
+      - task: check
+
+  fmt:
+    cmds:
+      - poetry run ruff . --fix
+      - poetry run black .
+
+  check:
+    cmds:
+      - task: lint
+      - task: test
+
+  lint:
+    cmds:
+      - poetry run ruff check .
+      - poetry run black . --check
+      - poetry run mypy ./prs --strict
+      - poetry run mypy ./tests
+
+  test:
+    cmds:
+      - poetry run pytest {{.CLI_ARGS}}
