@@ -1,4 +1,5 @@
 import asyncio
+import datetime
 
 import humanize
 import typer
@@ -16,6 +17,8 @@ def main() -> None:
 
 
 async def main_async() -> None:
+    two_weeks_ago = datetime.datetime.now(datetime.UTC) - datetime.timedelta(weeks=2)
+
     async with asyncio.TaskGroup() as tg:
         prs_where_i_am_author_task = tg.create_task(
             github.get_pull_requests("author:peter554")
@@ -26,36 +29,52 @@ async def main_async() -> None:
         prs_where_my_review_has_been_requested_task = tg.create_task(
             github.get_pull_requests("user-review-requested:peter554")
         )
-
-    my_prs = _deduplicate_prs(
-        prs_where_i_am_author_task.result(),
-        prs_where_i_am_assigned_task.result(),
-    )[:10]
-    prs_where_my_review_has_been_requested = (
-        prs_where_my_review_has_been_requested_task.result()
-    )[:10]
-
-    console = Console()
-    if my_prs:
-        _render_prs(console, "My PRs", my_prs)
-    if prs_where_my_review_has_been_requested:
-        _render_prs(
-            console, "My review requested", prs_where_my_review_has_been_requested
+        prs_i_have_reviewed_task = tg.create_task(
+            github.get_pull_requests(
+                f"reviewed-by:peter554 updated:>{two_weeks_ago.date()}"
+            )
         )
 
+    my_prs = set(prs_where_i_am_author_task.result()) | set(
+        prs_where_i_am_assigned_task.result()
+    )
+    prs_where_my_review_has_been_requested = set(
+        prs_where_my_review_has_been_requested_task.result()
+    )
+    prs_i_have_reviewed = set(prs_i_have_reviewed_task.result()) - my_prs
 
-def _deduplicate_prs(*prs: list[github.PullRequest]) -> list[github.PullRequest]:
-    deduplicated_prs = set([pr for prs_ in prs for pr in prs_])
-    return list(sorted(deduplicated_prs, key=lambda pr: pr.updated_at, reverse=True))
+    console = Console()
+    _render_prs(
+        console,
+        "My PRs",
+        _sort_and_take(my_prs, 10),
+    )
+    _render_prs(
+        console,
+        "PRs where my review is requested",
+        _sort_and_take(prs_where_my_review_has_been_requested, 10),
+    )
+    _render_prs(
+        console,
+        "PRs I have reviewed",
+        _sort_and_take(prs_i_have_reviewed, 10),
+    )
+
+
+def _sort_and_take(prs: set[github.PullRequest], n: int) -> list[github.PullRequest]:
+    return list(sorted(prs, key=lambda pr: pr.updated_at, reverse=True))[:n]
 
 
 def _render_prs(console: Console, title: str, prs: list[github.PullRequest]) -> None:
-    table = Table(title=title)
+    table = Table(title=title, expand=True)
 
     table.add_column("PR")
     table.add_column("Title", max_width=64, no_wrap=True)
     table.add_column("Created")
     table.add_column("Updated")
+
+    if not prs:
+        table.add_row(*["-"] * 4)
 
     for pr in prs:
         if pr.is_draft:
