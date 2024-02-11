@@ -14,6 +14,7 @@ class GitHubError(Exception): ...
 class PullRequest(pydantic.BaseModel):
     model_config = pydantic.ConfigDict(frozen=True)
 
+    author: str
     number: int
     title: str
     url: str
@@ -23,7 +24,7 @@ class PullRequest(pydantic.BaseModel):
     updated_at: datetime.datetime
 
     def __hash__(self) -> int:
-        return hash((self.owner, self.repo, self.number))
+        return hash(self.url)
 
     @pydantic.computed_field  # type:ignore
     @property
@@ -38,6 +39,7 @@ class PullRequest(pydantic.BaseModel):
     @classmethod
     def from_api_response(cls, response: dict[str, Any]) -> PullRequest:
         return cls(
+            author=response["user"]["login"],
             number=response["number"],
             title=response["title"],
             url=response["html_url"],
