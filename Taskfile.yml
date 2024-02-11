@@ -16,6 +16,7 @@ tasks:
 
   fmt:
     cmds:
+      - poetry run black .
       - poetry run ruff . --fix
       - poetry run black .
 
