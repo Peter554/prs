@@ -25,7 +25,7 @@ class PullRequest(pydantic.BaseModel):
     closed_at: datetime.datetime | None
     merged_at: datetime.datetime | None
     commit_status: Literal["pending", "success", "failure", "unknown"]
-    approved: bool
+    is_approved: bool
 
     def __hash__(self) -> int:
         return hash(self.url)
@@ -45,7 +45,7 @@ class PullRequest(pydantic.BaseModel):
         cls,
         response: dict[str, Any],
         commit_status: Literal["pending", "success", "failure", "unknown"],
-        approved: bool,
+        is_approved: bool,
     ) -> PullRequest:
         return cls(
             author=response["user"]["login"],
@@ -59,7 +59,7 @@ class PullRequest(pydantic.BaseModel):
             closed_at=response["closed_at"],
             merged_at=response["pull_request"]["merged_at"],
             commit_status=commit_status,
-            approved=approved,
+            is_approved=is_approved,
         )
 
 
