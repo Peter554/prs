@@ -24,8 +24,8 @@ class PullRequest(pydantic.BaseModel):
     updated_at: datetime.datetime
     closed_at: datetime.datetime | None
     merged_at: datetime.datetime | None
-    commit_status: Literal["pending", "success", "failure", "unknown"]
-    is_approved: bool
+    commit_status: Literal["unknown", "pending", "success", "failure"]
+    review_status: Literal["unknown", "approved"]
 
     def __hash__(self) -> int:
         return hash(self.url)
@@ -44,8 +44,6 @@ class PullRequest(pydantic.BaseModel):
     def from_search_api_response(
         cls,
         response: dict[str, Any],
-        commit_status: Literal["pending", "success", "failure", "unknown"],
-        is_approved: bool,
     ) -> PullRequest:
         return cls(
             author=response["user"]["login"],
@@ -58,8 +56,8 @@ class PullRequest(pydantic.BaseModel):
             updated_at=response["updated_at"],
             closed_at=response["closed_at"],
             merged_at=response["pull_request"]["merged_at"],
-            commit_status=commit_status,
-            is_approved=is_approved,
+            commit_status="unknown",
+            review_status="unknown",
         )
 
 
@@ -81,22 +79,20 @@ async def get_pull_requests(query: str) -> list[PullRequest]:
     failure = set(pr["html_url"] for pr in failure_task.result())
     approved = set(pr["html_url"] for pr in approved_task.result())
 
-    return [
-        PullRequest.from_search_api_response(
-            pr,
-            (
-                "success"
-                if pr["html_url"] in success
-                else (
-                    "failure"
-                    if pr["html_url"] in failure
-                    else "pending" if pr["html_url"] in pending else "unknown"
-                )
-            ),
-            pr["html_url"] in approved,
-        )
-        for pr in base_task.result()
-    ]
+    prs = [PullRequest.from_search_api_response(pr) for pr in base_task.result()]
+
+    for pr in prs:
+        if pr.url in success:
+            pr.commit_status = "success"
+        elif pr.url in failure:
+            pr.commit_status = "failure"
+        elif pr.url in pending:
+            pr.commit_status = "pending"
+
+        if pr.url in approved:
+            pr.review_status = "approved"
+
+    return prs
 
 
 async def _get_pull_requests(query: str) -> Any:

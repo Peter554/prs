@@ -128,7 +128,7 @@ def render_prs(title: str, prs: list[github.PullRequest]) -> None:
                 "pending": "🟡",
                 "unknown": "⚪",
             }[pr.commit_status]
-            + ("🚢" if pr.is_approved else ""),
+            + ("🚢" if pr.review_status == "approved" else ""),
         )
 
     console.print(table)
