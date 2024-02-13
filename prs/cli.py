@@ -17,12 +17,12 @@ console = Console()
 
 @cli.command()
 def main(
-    mode: Annotated[str, typer.Argument()] = "review-requests", n: int = 10
+    cmd: Annotated[str, typer.Argument()] = "review-requests", n: int = 10
 ) -> None:
-    asyncio.run(amain(mode, n))
+    asyncio.run(amain(cmd, n))
 
 
-async def amain(mode: str, n: int) -> None:
+async def amain(cmd: str, n: int) -> None:
     try:
         config_ = config.read_config()
     except config.ConfigNotFound:
@@ -30,14 +30,14 @@ async def amain(mode: str, n: int) -> None:
         username = typer.prompt("Username")
         config_ = config.Config(username=username)
         config.write_config(config_)
-        return await amain(mode, n)
+        return await amain(cmd, n)
 
-    if mode == "view-config":
+    if cmd == "view-config":
         print(str(config.config_path()))
         pprint(config_.model_dump())
         return
 
-    if mode == "add-team-alias":
+    if cmd == "add-team-alias":
         alias = typer.prompt("Alias")
         team = typer.prompt("Team")
         config_.team_aliases[alias] = team
@@ -47,17 +47,17 @@ async def amain(mode: str, n: int) -> None:
     try:
         async with asyncio.TaskGroup() as tg_:
             tg = PullRequestsTaskGroup(tg_)
-            if mode in ("mine", "m"):
+            if cmd in ("mine", "m"):
                 title = "My PRs"
                 tg.include(f"author:{config_.username}")
                 tg.include(f"assignee:{config_.username}")
-            elif mode in ("review-requests", "rr"):
+            elif cmd in ("review-requests", "rr"):
                 title = "PRs where my review is requested"
                 tg.include(f"user-review-requested:{config_.username}")
-            elif mode in ("review-requests-teams", "rrt"):
+            elif cmd in ("review-requests-teams", "rrt"):
                 title = "PRs where my review is requested (including teams)"
                 tg.include(f"review-requested:{config_.username} ")
-            elif mode in ("reviewed", "r"):
+            elif cmd in ("reviewed", "r"):
                 title = "PRs I have reviewed (updated in last 2 weeks)"
                 two_weeks_ago = datetime.datetime.now(
                     datetime.UTC
@@ -66,8 +66,8 @@ async def amain(mode: str, n: int) -> None:
                     f"reviewed-by:{config_.username} updated:>{two_weeks_ago.date()} "
                     f"-author:{config_.username} -assignee:{config_.username}"
                 )
-            elif mode.startswith("team:") or mode.startswith("t:"):
-                team = mode.removeprefix("team:")
+            elif cmd.startswith("team:") or cmd.startswith("t:"):
+                team = cmd.removeprefix("team:")
                 team = team.removeprefix("t:")
                 if team in config_.team_aliases:
                     team = config_.team_aliases[team]
@@ -77,7 +77,7 @@ async def amain(mode: str, n: int) -> None:
                     f"-author:{config_.username} -assignee:{config_.username}"
                 )
             else:
-                ValueError(f'mode "{mode}" not supported')
+                ValueError(f'Command "{cmd}" not supported')
     except* github.GitHubError as e:
         pprint(e.exceptions[0])
     else:
