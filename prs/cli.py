@@ -6,13 +6,14 @@ import humanize
 import typer
 from rich.console import Console
 from rich.markup import escape
-from rich.pretty import pprint
 from rich.table import Table
 
 from . import config, github
 
 cli = typer.Typer()
+
 console = Console()
+stderr_console = Console(stderr=True)
 
 
 @cli.command()
@@ -26,15 +27,16 @@ async def amain(cmd: str, n: int) -> None:
     try:
         config_ = config.read_config()
     except config.ConfigNotFound:
-        print(f"No config file found ({config.config_path()}), creating one now...")
+        stderr_console.print(
+            f"No config file found ({config.config_path()}), creating one now..."
+        )
         username = typer.prompt("Username")
         config_ = config.Config(username=username)
         config.write_config(config_)
-        return await amain(cmd, n)
 
     if cmd == "view-config":
-        print(str(config.config_path()))
-        pprint(config_.model_dump())
+        console.print(str(config.config_path()))
+        console.print(config_.model_dump())
         return
 
     if cmd == "add-team-alias":
@@ -79,7 +81,7 @@ async def amain(cmd: str, n: int) -> None:
             else:
                 ValueError(f'Command "{cmd}" not supported')
     except* github.GitHubError as e:
-        pprint(e.exceptions[0])
+        stderr_console.print(e.exceptions[0])
     else:
         render_prs(title, tg.result()[:n])
 
