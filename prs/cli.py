@@ -47,58 +47,52 @@ async def amain(cmd: str, n: int) -> None:
         return
 
     try:
-        async with asyncio.TaskGroup() as tg_:
-            tg = PullRequestsTaskGroup(tg_)
-            if cmd in ("mine", "m"):
-                title = "My PRs"
-                tg.include(f"author:{config_.username}")
-                tg.include(f"assignee:{config_.username}")
-            elif cmd in ("review-requests", "rr"):
-                title = "PRs where my review is requested"
-                tg.include(f"user-review-requested:{config_.username}")
-            elif cmd in ("review-requests-teams", "rrt"):
-                title = "PRs where my review is requested (including teams)"
-                tg.include(f"review-requested:{config_.username} ")
-            elif cmd in ("reviewed", "r"):
-                title = "PRs I have reviewed (updated in last 2 weeks)"
-                two_weeks_ago = datetime.datetime.now(
-                    datetime.UTC
-                ) - datetime.timedelta(weeks=2)
-                tg.include(
-                    f"reviewed-by:{config_.username} updated:>{two_weeks_ago.date()} "
-                    f"-author:{config_.username} -assignee:{config_.username}"
-                )
-            elif cmd.startswith("team:") or cmd.startswith("t:"):
-                team = cmd.removeprefix("team:")
-                team = team.removeprefix("t:")
-                if team in config_.team_aliases:
-                    team = config_.team_aliases[team]
-                title = f"PRs where review is requested (team {team})"
-                tg.include(
-                    f"team-review-requested:{team} "
-                    f"-author:{config_.username} -assignee:{config_.username}"
-                )
-            else:
-                ValueError(f'Command "{cmd}" not supported')
-    except* github.GitHubError as e:
-        stderr_console.print(e.exceptions[0])
-    else:
-        render_prs(title, tg.result()[:n])
+        prs_client = github.PullRequestsClient("is:open archived:false")
+        if cmd in ("mine", "m"):
+            title = "My PRs"
+            prs = await prs_client.get_pull_requests(
+                n,
+                f"author:{config_.username}",
+                f"assignee:{config_.username}",
+            )
+        elif cmd in ("review-requests", "rr"):
+            title = "PRs where my review is requested"
+            prs = await prs_client.get_pull_requests(
+                n, f"user-review-requested:{config_.username}"
+            )
+        elif cmd in ("review-requests-teams", "rrt"):
+            title = "PRs where my review is requested (including teams)"
+            prs = await prs_client.get_pull_requests(
+                n, f"review-requested:{config_.username}"
+            )
+        elif cmd in ("reviewed", "r"):
+            title = "PRs I have reviewed (updated in last 2 weeks)"
+            two_weeks_ago = datetime.datetime.now(datetime.UTC) - datetime.timedelta(
+                weeks=2
+            )
+            prs = await prs_client.get_pull_requests(
+                n,
+                f"reviewed-by:{config_.username} updated:>{two_weeks_ago.date()} "
+                f"-author:{config_.username} -assignee:{config_.username}",
+            )
+        elif cmd.startswith("team:") or cmd.startswith("t:"):
+            team = cmd.removeprefix("team:")
+            team = team.removeprefix("t:")
+            if team in config_.team_aliases:
+                team = config_.team_aliases[team]
+            title = f"PRs where review is requested (team {team})"
+            prs = await prs_client.get_pull_requests(
+                n,
+                f"team-review-requested:{team} "
+                f"-author:{config_.username} -assignee:{config_.username}",
+            )
+        else:
+            ValueError(f'Command "{cmd}" not supported')
+    except github.GitHubError:
+        stderr_console.print_exception()
+        return
 
-
-class PullRequestsTaskGroup:
-    def __init__(self, tg: asyncio.TaskGroup) -> None:
-        self._tg = tg
-        self._include: list[asyncio.Task[list[github.PullRequest]]] = []
-
-    def include(self, query: str) -> None:
-        self._include.append(self._tg.create_task(github.get_pull_requests(query)))
-
-    def result(self) -> list[github.PullRequest]:
-        prs: set[github.PullRequest] = set()
-        for include in self._include:
-            prs |= set(include.result())
-        return list(sorted(prs, key=lambda pr: pr.created_at, reverse=True))
+    render_prs(title, prs)
 
 
 def render_prs(title: str, prs: list[github.PullRequest]) -> None:
