@@ -19,23 +19,27 @@ prs mine
 prs m
 
 # PRs I am requested to review (excluding teams)
-prs review-requests
+prs review-requested
 prs rr
 prs
 
 # PRs I am requested to review (including teams)
-prs review-requests-teams
-prs rrt
+prs review-requested-all
+prs rra
 
 # PRs I have reviewed (updated in the last 2 weeks)
 prs reviewed
 prs r
 
 # PRs a team is requested to review
-prs team:<team>
-prs t:<team>
-prs t:<team_alias>
+prs team-review-requested:<team>
+prs trr:<team>
+prs trr:<team_alias>
 
 # Add a team alias
 prs add-team-alias
+
+# Closed/merged PRs
+prs <cmd> --closed
+prs <cmd> -c
 ```

@@ -18,12 +18,14 @@ stderr_console = Console(stderr=True)
 
 @cli.command()
 def main(
-    cmd: Annotated[str, typer.Argument()] = "review-requests", n: int = 10
+    cmd: Annotated[str, typer.Argument()] = "review-requested",
+    n: int = 10,
+    closed: Annotated[bool, typer.Option("--closed", "-c")] = False,
 ) -> None:
-    asyncio.run(amain(cmd, n))
+    asyncio.run(amain(cmd, n, closed))
 
 
-async def amain(cmd: str, n: int) -> None:
+async def amain(cmd: str, n: int, closed: bool) -> None:
     try:
         config_ = config.read_config()
     except config.ConfigNotFound:
@@ -46,8 +48,16 @@ async def amain(cmd: str, n: int) -> None:
         config.write_config(config_)
         return
 
+    two_weeks_ago = datetime.datetime.now(datetime.UTC) - datetime.timedelta(weeks=2)
+
     try:
-        prs_client = github.PullRequestsClient("is:open archived:false")
+        if closed:
+            prs_client = github.PullRequestsClient(
+                f"archived:false is:closed closed:>{two_weeks_ago.date()}"
+            )
+        else:
+            prs_client = github.PullRequestsClient("archived:false is:open")
+
         if cmd in ("mine", "m"):
             title = "My PRs"
             prs = await prs_client.get_pull_requests(
@@ -55,29 +65,26 @@ async def amain(cmd: str, n: int) -> None:
                 f"author:{config_.username}",
                 f"assignee:{config_.username}",
             )
-        elif cmd in ("review-requests", "rr"):
+        elif cmd in ("review-requested", "rr"):
             title = "PRs where my review is requested"
             prs = await prs_client.get_pull_requests(
                 n, f"user-review-requested:{config_.username}"
             )
-        elif cmd in ("review-requests-teams", "rrt"):
+        elif cmd in ("review-requested-all", "rra"):
             title = "PRs where my review is requested (including teams)"
             prs = await prs_client.get_pull_requests(
                 n, f"review-requested:{config_.username}"
             )
         elif cmd in ("reviewed", "r"):
             title = "PRs I have reviewed (updated in last 2 weeks)"
-            two_weeks_ago = datetime.datetime.now(datetime.UTC) - datetime.timedelta(
-                weeks=2
-            )
             prs = await prs_client.get_pull_requests(
                 n,
                 f"reviewed-by:{config_.username} updated:>{two_weeks_ago.date()} "
                 f"-author:{config_.username} -assignee:{config_.username}",
             )
-        elif cmd.startswith("team:") or cmd.startswith("t:"):
-            team = cmd.removeprefix("team:")
-            team = team.removeprefix("t:")
+        elif cmd.startswith("team-review-requested:") or cmd.startswith("trr:"):
+            team = cmd.removeprefix("team-review-requested:")
+            team = team.removeprefix("trr:")
             if team in config_.team_aliases:
                 team = config_.team_aliases[team]
             title = f"PRs where review is requested (team {team})"
@@ -87,7 +94,7 @@ async def amain(cmd: str, n: int) -> None:
                 f"-author:{config_.username} -assignee:{config_.username}",
             )
         else:
-            ValueError(f'Command "{cmd}" not supported')
+            raise ValueError(f'Command "{cmd}" not supported')
     except github.GitHubError:
         stderr_console.print_exception()
         return
@@ -106,7 +113,11 @@ def render_prs(title: str, prs: list[github.PullRequest]) -> None:
     table.add_column("Status")
 
     for pr in prs:
-        if pr.is_draft:
+        if pr.merged_at is not None:
+            color = "purple"
+        elif pr.closed_at is not None:
+            color = "red"
+        elif pr.is_draft:
             color = "grey"
         else:
             color = "green"
